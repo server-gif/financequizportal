@@ -103,6 +103,21 @@ function loadQuestion() {
       selectAnswer(option, el);
     });
 
+    // Intercept option click → show interstitial ad → then navigate
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      var targetUrl = el.getAttribute('href');
+      console.log("[QUIZ] Option clicked. targetUrl:", targetUrl);
+      // small delay so the user sees correct/wrong highlight first
+      setTimeout(function () {
+        if (typeof showInterstitialAndGo === 'function') {
+          showInterstitialAndGo(targetUrl);
+        } else {
+          window.location.href = targetUrl;
+        }
+      }, 500);
+    });
+
     optionsContainer.appendChild(el);
   });
 
@@ -262,6 +277,7 @@ function claimReward() {
   resultContainer.classList.remove("hide-index");
   document.getElementById("rewardPopup").style.display = "none";
   document.getElementById("rewardPopup").remove();
+  showRewardAndGo('', 7);
   addCoins(100);
 
   /*  setTimeout(() => {
@@ -303,13 +319,27 @@ updateCoinsDisplay(currentCoins);
   // showAdAndNavigate('start.html',3);
  });
 });*/
+// Play Now / Go To Home click → show interstitial → then navigate
+$(document).on("click", ".play_now_btn", function (e) {
+  e.preventDefault();
+  var targetUrl = $(this).attr("href") || "start.html";
+  if (typeof showInterstitialAndGo === 'function') {
+    showInterstitialAndGo(targetUrl);
+  } else {
+    window.location.href = targetUrl;
+  }
+});
 let quiz_uql = null;
 $(document).on("click", ".play-quiz-start", function (e) {
   e.preventDefault();
   const category = $(this).data("category");
   var currentCoins = getCoins();
   quiz_uql = "play-quiz.html?cate=" + encodeURIComponent(category);
-  window.location.href = quiz_uql;
+  if (typeof showRewardAndGo === 'function') {
+    showRewardAndGo(quiz_uql);
+  } else {
+    window.location.href = quiz_uql;
+  }
   // document.getElementById("coinAlert").style.display = "flex";
 
   /*if(currentCoins < 500 || currentCoins == ""){
@@ -340,6 +370,7 @@ $(document).on("click", "#watchBtn", function () {
 document.querySelectorAll('.coins').forEach(element => {
   element.addEventListener('click', () => {
 
+    showRewardAndGo('', 3);
     setTimeout(() => {
       addCoins(20);
       updateCoinsDisplay(getCoins());
@@ -359,26 +390,36 @@ window.addEventListener("load", function() {
 * REWARDED AD – INSTANT OPEN WITH PROPER PRELOAD
 *****************************************************/
 let isPopupDisplayed = false;
+let gptPopupAdReady = false;
+
+// Listen for GPT slot render events to track popup ad status
+window.googletag = window.googletag || { cmd: [] };
+googletag.cmd.push(function () {
+  googletag.pubads().addEventListener('slotRenderEnded', function (event) {
+    var slotId = event.slot.getSlotElementId();
+    if (slotId === 'global-ads-popup-ad-wrap') {
+      gptPopupAdReady = !event.isEmpty;
+    }
+  });
+});
+
 function showAdAndNavigate(url, timer) {
-  if (url) {
-    window.location.href = url;
-  }
   const cadsPopup = document.getElementById("adsPopup");
+  if (!cadsPopup) {
+    if (url) window.location.href = url;
+    return;
+  }
 
+  // Check if GPT ad has rendered content inside popup slot
+  const adWrap = cadsPopup.querySelector('#global-ads-popup-ad-wrap');
+  const hasGptAd = adWrap && adWrap.querySelector('iframe');
 
-  const cadIns = cadsPopup.querySelector('ins.adsbygoogle');
-  const cadsstatus = cadIns.getAttribute('data-ad-status');
-
-  if (cadsstatus == 'filled') {
-    console.log('ok');
+  if (hasGptAd || gptPopupAdReady) {
+    console.log('GPT Popup ad filled');
     showAdPopup(url, timer);
   } else {
-    if (url) {
-      window.location.href = url;
-    }
-
+    if (url) { window.location.href = url; }
   }
-
 }
 /*
 function showAdPopupd(url,timerset) {
@@ -416,17 +457,21 @@ function showAdPopupd(url,timerset) {
     });
 }*/
 function showAdPopup(url, timeLeft) {
-  if (url) { window.location.href = url; }
   const adsPopup = document.getElementById("adsPopup");
   const closeAd = document.getElementById("closeAd");
-  const adTimer = document.getElementById("adTimer")
+  const adTimer = document.getElementById("adTimer");
 
-  const adIns = adsPopup.querySelector('ins.adsbygoogle');
-  const adsstatus = adIns.getAttribute('data-ad-status');
-
-  if (adsstatus != 'filled') {
+  if (!adsPopup) {
     if (url) { window.location.href = url; }
+    return;
+  }
 
+  // Check if GPT ad rendered inside popup
+  const adWrap = adsPopup.querySelector('#global-ads-popup-ad-wrap');
+  const hasGptAd = adWrap && adWrap.querySelector('iframe');
+
+  if (!hasGptAd && !gptPopupAdReady) {
+    if (url) { window.location.href = url; }
   } else {
     adsPopup.classList.add("active");
 
@@ -445,9 +490,8 @@ function showAdPopup(url, timeLeft) {
       }
     }, 1000);
   }
-  closeAd.addEventListener("click", () => {
+  closeAd.onclick = function() {
     adsPopup.classList.remove("active");
-
     if (url) { window.location.href = url; }
-  });
+  };
 }
